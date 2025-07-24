@@ -31,8 +31,8 @@ ver_lhc_run          = 3;
 on_errors_LHC        = 1;
 call, file="{path_errors.as_posix()}/LHC/Msubroutines.madx";
 call, file="{path_errors.as_posix()}/LHC/Msubroutines_MS_MSS_MO.madx";
-call, file="{path_errors.as_posix()}//Orbit_Routines.madx";
-call, file="{path_errors.as_posix()}//SelectLHCMonCor_v1.madx";
+call, file="{path_errors.as_posix()}/Orbit_Routines.madx";
+call, file="{path_errors.as_posix()}/SelectLHCMonCor_v1.madx";
 call, file="{path_errors.as_posix()}/HL-LHC/macro_error_v1.madx";   ! macros for error generation in the new IT/D1's
 exec, ON_ALL_MULT;
 ON_A1s =  0 ; ON_A1r =  0 ; ON_B1s =  0 ; ON_B1r =  0 ;

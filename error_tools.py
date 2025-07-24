@@ -87,10 +87,10 @@ def assign_errors(env, error_table, rotation_table, dipoles=False, separation_di
                         continue
                     ee = env[this_name]
                     eeref = env.ref[this_name]
-                    kref = eeref.k0 if hasattr(ee, 'k0') else eeref.knl[0]
+                    kl_ref = 1e-4 * eeref.k0 * ee.length if hasattr(ee, 'k0') else 1e-4 * eeref.knl[0]
                     assign_errors_single_magnet(env, this_name, err, order=0, is_skew=False,
-                                                kl_ref=1e-4 * kref * env[this_name].length,
-                                                is_rotated=is_rotated, is_beam4=(beam==2), Rr=0.017)
+                                                kl_ref=kl_ref, is_rotated=is_rotated,
+                                                is_beam4=(beam==2), Rr=0.017)
         consider_micado(env)
 
     # Now all the other magnets
@@ -136,68 +136,77 @@ def assign_errors(env, error_table, rotation_table, dipoles=False, separation_di
     store_val_on_b2s = env['on_b2s']
     env['on_b2s'] = 0
     for nn, err in error_table.items():
-        if any([nn.startswith(start) for start in startswith]):
-            if nn.startswith('mb.'):
-                # Main Dipole, already handled above
+        if not any([nn.startswith(start) for start in startswith]):
+            continue
+        if nn.startswith('mb.'):
+            # Main Dipole, already handled above
+            continue
+        name, beam, magnets = _get_name_from_slot(nn, err, env)
+        is_rotated = _is_rotated(name, rotation_table)
+        for this_name in magnets:
+            if this_name in veto: continue
+            if this_name not in env.elements:
+                print(f"Warning: {this_name} not found in environment, not assigning errors.")
                 continue
-            name, beam, magnets = _get_name_from_slot(nn, err, env)
-            is_rotated = _is_rotated(name, rotation_table)
-            for this_name in magnets:
-                if this_name in veto: continue
-                if this_name not in env.elements:
-                    print(f"Warning: {this_name} not found in environment, not assigning errors.")
-                    continue
-                ee = env[this_name]
-                eeref = env.ref[this_name]
-                if nn.startswith('mb') or nn.startswith('mcb'):
-                    kref = eeref.k0 if hasattr(ee, 'k0') else eeref.knl[0]
-                    assign_errors_single_magnet(env, this_name, err, order=0, is_skew=False,
-                                                kl_ref=1e-4 * kref * ee.length,
-                                                is_rotated=is_rotated, is_beam4=(beam==2), Rr=0.017)
-                elif nn.startswith('mq.'):
-                    # Quadrupole
-                    # These don't seem to follow the magnetic sign convention. Not sure why...
-                    kref = eeref.k1 if hasattr(ee, 'k1') else eeref.knl[1]
-                    assign_errors_single_magnet(env, this_name, err, order=1, is_skew=False,
-                                                kl_ref=1e-4 * kref * ee.length,
-                                                is_rotated=is_rotated, is_beam4=(beam==2), Rr=0.017,
-                                                magnetic_sign=False)
-                elif nn.startswith('ms.') or nn.startswith('mcs.') or nn.startswith('mcsx.'):
-                    # Sextupole
-                    kref = eeref.k2 if hasattr(ee, 'k2') else eeref.knl[2]
-                    assign_errors_single_magnet(env, this_name, err, order=2, is_skew=False,
-                                                kl_ref=1e-4 * kref* ee.length,
-                                                is_rotated=is_rotated, is_beam4=(beam==2), Rr=0.017)
-                elif nn.startswith('mss.') or nn.startswith('mcssx.'):
-                    # Skew Sextupole
-                    kref = eeref.k2s if hasattr(ee, 'k2s') else eeref.ksl[2]
-                    assign_errors_single_magnet(env, this_name, err, order=2, is_skew=True,
-                                                kl_ref=1e-4 * kref * ee.length,
-                                                is_rotated=is_rotated, is_beam4=(beam==2), Rr=0.017)
-                elif nn.startswith('mo.') or nn.startswith('mco.') or nn.startswith('mcox.'):
-                    # Octupole
-                    kref = eeref.k3 if hasattr(ee, 'k3') else eeref.knl[3]
-                    assign_errors_single_magnet(env, this_name, err, order=3, is_skew=False,
-                                                kl_ref=1e-4 * kref * ee.length,
-                                                is_rotated=is_rotated, is_beam4=(beam==2), Rr=0.017)
-                elif nn.startswith('mcosx.'):
-                    # Skew Octupole
-                    kref = eeref.k3s if hasattr(ee, 'k3s') else eeref.ksl[3]
-                    assign_errors_single_magnet(env, this_name, err, order=3, is_skew=True,
-                                                kl_ref=1e-4 * kref * ee.length,
-                                                is_rotated=is_rotated, is_beam4=(beam==2), Rr=0.017)
-                elif nn.startswith('mcd.'):
-                    # Decapole
-                    kref = eeref.knl[4]
-                    assign_errors_single_magnet(env, this_name, err, order=4, is_skew=False,
-                                                kl_ref=1e-4 * kref * ee.length,
-                                                is_rotated=is_rotated, is_beam4=(beam==2), Rr=0.017)
-                elif nn.startswith('mctx.'):
-                    # Dodecapole
-                    kref = eeref.knl[5]
-                    assign_errors_single_magnet(env, this_name, err, order=5, is_skew=False,
-                                                kl_ref=1e-4 * kref * ee.length,
-                                                is_rotated=is_rotated, is_beam4=(beam==2), Rr=0.017)
+            ee = env[this_name]
+            eeref = env.ref[this_name]
+            magnetic_sign = True
+
+            # Dipole
+            if nn.startswith('mb') or nn.startswith('mcb'):
+                order = 0
+                is_skew = False
+                kl_ref = 1e-4 * eeref.k0 * ee.length if hasattr(ee, 'k0') else 1e-4 * eeref.knl[0]
+
+            # Quadrupole
+            elif nn.startswith('mq.'):
+                # These don't seem to follow the magnetic sign convention. Not sure why...
+                order = 1
+                is_skew = False
+                magnetic_sign = False
+                kl_ref = 1e-4 * eeref.k1 * ee.length if hasattr(ee, 'k1') else 1e-4 * eeref.knl[1]
+
+            # Sextupole
+            elif nn.startswith('ms.') or nn.startswith('mcs.') or nn.startswith('mcsx.'):
+                order = 2
+                is_skew = False
+                kl_ref = 1e-4 * eeref.k2 * ee.length if hasattr(ee, 'k2') else 1e-4 * eeref.knl[2]
+
+            # Skew Sextupole
+            elif nn.startswith('mss.') or nn.startswith('mcssx.'):
+                order = 2
+                is_skew = True
+                kl_ref = 1e-4 * eeref.k2s * ee.length if hasattr(ee, 'k2s') else 1e-4 * eeref.ksl[2]
+
+            # Octupole
+            elif nn.startswith('mo.') or nn.startswith('mco.') or nn.startswith('mcox.'):
+                order = 3
+                is_skew = False
+                kl_ref = 1e-4 * eeref.k3 * ee.length if hasattr(ee, 'k3') else 1e-4 * eeref.knl[3]
+
+            # Skew Octupole
+            elif nn.startswith('mcosx.'):
+                order = 3
+                is_skew = True
+                kl_ref = 1e-4 * eeref.k3s * ee.length if hasattr(ee, 'k3s') else 1e-4 * eeref.ksl[3]
+
+            # Decapole
+            elif nn.startswith('mcd.'):
+                order = 4
+                is_skew = False
+                kl_ref = 1e-4 * eeref.knl[4]
+
+            # Dodecapole
+            elif nn.startswith('mctx.'):
+                order = 5
+                is_skew = False
+                kl_ref = 1e-4 * eeref.knl[5]
+
+            else:
+                continue
+            assign_errors_single_magnet(env, this_name, err, order=order, is_skew=is_skew,
+                                        kl_ref=kl_ref, is_rotated=is_rotated, is_beam4=(beam==2),
+                                        Rr=0.017, magnetic_sign=magnetic_sign)
     env['on_b2s'] = store_val_on_b2s
 
 

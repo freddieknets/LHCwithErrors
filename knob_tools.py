@@ -10,7 +10,13 @@ def disable_crossing(env, config=None):
                 env.vars[knob] = 0
     else:
         for knob in env.vars.get_table().name:
-            if knob.startswith('on_'):
+            if knob == 'on_errors' or knob == 'on_corr':
+                continue
+            elif knob.startswith('on_'):
+                if len(knob) == 6 and knob[3] in 'ab' and knob[4] in '123456789' and knob[5] in 'rs':
+                    continue
+                elif len(knob) == 7 and knob[3] in 'ab' and knob[4] in '12' and knob[5] in '0123456789' and knob[6] in 'rs':
+                    continue
                 env.vars[knob] = 0
 
 def enable_crossing(env, config):
